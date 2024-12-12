@@ -24,7 +24,7 @@ public class Main {
     public static void main(String[] args) throws IOException {
         initializeDataFile();
 
-        // Set up the server on port 8080
+        // Set up the server on port 25565
         HttpServer server = HttpServer.create(new InetSocketAddress(25565), 0);
         server.createContext("/login", new LoginHandler());
         server.createContext("/signup", new SignupHandler());
