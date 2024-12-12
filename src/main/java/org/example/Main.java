@@ -1,5 +1,3 @@
-// File: src/main/java/org/example/ChatServer.java
-
 package org.example;
 
 import com.sun.net.httpserver.HttpServer;
@@ -25,7 +23,7 @@ public class Main {
         initializeDataFile();
 
         // Set up the server on port 25565
-        HttpServer server = HttpServer.create(new InetSocketAddress(25565), 0);
+        HttpServer server = HttpServer.create(new InetSocketAddress("0.0.0.0", 25565), 0);
         server.createContext("/login", new LoginHandler());
         server.createContext("/signup", new SignupHandler());
         server.createContext("/sendMessage", new SendMessageHandler());
@@ -90,6 +88,7 @@ public class Main {
                     responseJson.put("message", "Invalid username or password.");
                 }
 
+                System.out.println("Login attempt: " + responseJson);
                 sendJsonResponse(exchange, responseJson);
             } else {
                 exchange.sendResponseHeaders(405, -1); // Method not allowed
@@ -137,6 +136,7 @@ public class Main {
                     responseJson.put("message", "Signup successful!");
                 }
 
+                System.out.println("Signup attempt: " + responseJson);
                 sendJsonResponse(exchange, responseJson);
             } else {
                 exchange.sendResponseHeaders(405, -1); // Method not allowed
@@ -167,6 +167,7 @@ public class Main {
                     responseJson.put("message", "User not logged in.");
                 }
 
+                System.out.println("Message sent: " + responseJson);
                 sendJsonResponse(exchange, responseJson);
             } else {
                 exchange.sendResponseHeaders(405, -1); // Method not allowed
@@ -184,6 +185,7 @@ public class Main {
             if ("GET".equals(exchange.getRequestMethod())) {
                 JSONObject responseJson = new JSONObject();
                 responseJson.put("messages", chatRoom.getMessages());
+                System.out.println("Messages received: " + responseJson);
                 sendJsonResponse(exchange, responseJson);
             } else {
                 exchange.sendResponseHeaders(405, -1); // Method not allowed
