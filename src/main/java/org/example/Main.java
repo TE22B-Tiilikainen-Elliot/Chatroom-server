@@ -1,59 +1,68 @@
 package org.example;
 
-import com.sun.net.httpserver.HttpServer;
-import com.sun.net.httpserver.HttpHandler;
-import com.sun.net.httpserver.HttpExchange;
-import org.json.JSONObject;
-import org.json.JSONArray;
+// Importerar nödvändiga bibliotek
+import com.sun.net.httpserver.*;
+import org.json.*;
 import java.io.*;
-import java.nio.file.Files;
-import java.nio.file.Paths;
-import java.nio.charset.StandardCharsets;
-import java.net.InetSocketAddress;
+import java.nio.file.*;
+import java.net.*;
 import java.util.*;
-import java.util.concurrent.CopyOnWriteArrayList;
+import java.util.concurrent.*;
+import java.nio.charset.StandardCharsets;
 
 public class Main {
-
-    private static final String DATA_FILE = "data.json"; // Path to the JSON file for user data
-    private static final Map<String, UserSession> activeSessions = new HashMap<>(); // Active user sessions
-    private static final ChatRoom chatRoom = new ChatRoom(); // Shared chat room for all users
+    // Konstanter och delade resurser
+    private static final String DATA_FILE = "data.json"; // Fil för användardata
+    private static final Map<String, UserSession> activeSessions = new HashMap<>(); // Aktiva användarsessioner
+    private static final ChatRoom chatRoom = new ChatRoom(); // Globalt chattrum
 
     public static void main(String[] args) throws IOException {
+        // Initiera datafilen om den inte finns
         initializeDataFile();
 
-        // Set up the server on port 25565
+        // Starta HTTP-server på port 25565
         HttpServer server = HttpServer.create(new InetSocketAddress("0.0.0.0", 25565), 0);
+
+        // Skapa API-endpoints
         server.createContext("/login", new LoginHandler());
         server.createContext("/signup", new SignupHandler());
         server.createContext("/sendMessage", new SendMessageHandler());
         server.createContext("/receiveMessages", new ReceiveMessagesHandler());
 
-        System.out.println("Chat server started on port 25565");
-
-        server.setExecutor(null); // Use default executor
+        System.out.println("Chattserver startad på port 25565");
+        server.setExecutor(null);
         server.start();
     }
 
-    // Initializes the data.json file if it does not already exist
+    // Skapar datafilen om den inte finns
     private static void initializeDataFile() throws IOException {
-        File file = new File(DATA_FILE);
-        if (!file.exists()) {
-            Files.write(Paths.get(DATA_FILE), "[]".getBytes(StandardCharsets.UTF_8));
+        Path path = Paths.get(DATA_FILE);
+        if (!Files.exists(path)) {
+            // Försök kopiera från resurser eller skapa tom fil
+            InputStream resource = Main.class.getClassLoader().getResourceAsStream(DATA_FILE);
+            if (resource != null) {
+                Files.copy(resource, path);
+                resource.close();
+                System.out.println("data.json kopierad från resurser");
+            } else {
+                Files.write(path, "[]".getBytes(StandardCharsets.UTF_8));
+                System.out.println("Tom data.json skapad");
+            }
         }
     }
 
-    // Reads all users from the JSON file
+    // Läser användare från JSON-fil
     private static JSONArray readUsersFromFile() throws IOException {
         String content = new String(Files.readAllBytes(Paths.get(DATA_FILE)), StandardCharsets.UTF_8);
         return new JSONArray(content);
     }
 
-    // Writes the updated user data to the JSON file
+    // Sparar användare till JSON-fil
     private static void writeUsersToFile(JSONArray users) throws IOException {
         Files.write(Paths.get(DATA_FILE), users.toString(2).getBytes(StandardCharsets.UTF_8));
     }
 
+    // Hanterare för inloggning
     static class LoginHandler implements HttpHandler {
         @Override
         public void handle(HttpExchange exchange) throws IOException {
@@ -61,14 +70,16 @@ public class Main {
                 handleCors(exchange);
                 return;
             }
+
             if ("POST".equals(exchange.getRequestMethod())) {
                 JSONObject requestBody = parseRequestBody(exchange);
                 String username = requestBody.optString("username", "");
                 String password = requestBody.optString("password", "");
 
-                JSONObject responseJson = new JSONObject();
+                JSONObject response = new JSONObject();
                 boolean success = false;
 
+                // Kolla användare mot fil
                 JSONArray users = readUsersFromFile();
                 for (int i = 0; i < users.length(); i++) {
                     JSONObject user = users.getJSONObject(i);
@@ -81,21 +92,21 @@ public class Main {
                 }
 
                 if (success) {
-                    responseJson.put("status", "success");
-                    responseJson.put("message", "Login successful!");
+                    response.put("status", "success");
+                    response.put("message", "Inloggning lyckades!");
                 } else {
-                    responseJson.put("status", "failure");
-                    responseJson.put("message", "Invalid username or password.");
+                    response.put("status", "failure");
+                    response.put("message", "Fel användarnamn eller lösenord");
                 }
 
-                System.out.println("Login attempt: " + responseJson);
-                sendJsonResponse(exchange, responseJson);
+                sendJsonResponse(exchange, response);
             } else {
-                exchange.sendResponseHeaders(405, -1); // Method not allowed
+                exchange.sendResponseHeaders(405, -1); // Metod inte tillåten
             }
         }
     }
 
+    // Hanterare för registrering
     static class SignupHandler implements HttpHandler {
         @Override
         public void handle(HttpExchange exchange) throws IOException {
@@ -103,15 +114,17 @@ public class Main {
                 handleCors(exchange);
                 return;
             }
+
             if ("POST".equals(exchange.getRequestMethod())) {
                 JSONObject requestBody = parseRequestBody(exchange);
                 String username = requestBody.optString("username", "");
                 String password = requestBody.optString("password", "");
 
-                JSONObject responseJson = new JSONObject();
-
+                JSONObject response = new JSONObject();
                 JSONArray users = readUsersFromFile();
                 boolean userExists = false;
+
+                // Kolla om användare redan finns
                 for (int i = 0; i < users.length(); i++) {
                     if (users.getJSONObject(i).getString("username").equals(username)) {
                         userExists = true;
@@ -120,30 +133,31 @@ public class Main {
                 }
 
                 if (userExists) {
-                    responseJson.put("status", "failure");
-                    responseJson.put("message", "Username already exists.");
+                    response.put("status", "failure");
+                    response.put("message", "Användarnamn upptaget");
                 } else if (username.isEmpty() || password.isEmpty()) {
-                    responseJson.put("status", "failure");
-                    responseJson.put("message", "Username or password cannot be empty.");
+                    response.put("status", "failure");
+                    response.put("message", "Användarnamn/lösenord får inte vara tomma");
                 } else {
+                    // Skapa ny användare
                     JSONObject newUser = new JSONObject();
                     newUser.put("username", username);
                     newUser.put("password", password);
                     users.put(newUser);
                     writeUsersToFile(users);
 
-                    responseJson.put("status", "success");
-                    responseJson.put("message", "Signup successful!");
+                    response.put("status", "success");
+                    response.put("message", "Konto skapat!");
                 }
 
-                System.out.println("Signup attempt: " + responseJson);
-                sendJsonResponse(exchange, responseJson);
+                sendJsonResponse(exchange, response);
             } else {
-                exchange.sendResponseHeaders(405, -1); // Method not allowed
+                exchange.sendResponseHeaders(405, -1);
             }
         }
     }
 
+    // Hanterare för att skicka meddelanden
     static class SendMessageHandler implements HttpHandler {
         @Override
         public void handle(HttpExchange exchange) throws IOException {
@@ -151,30 +165,31 @@ public class Main {
                 handleCors(exchange);
                 return;
             }
+
             if ("POST".equals(exchange.getRequestMethod())) {
                 JSONObject requestBody = parseRequestBody(exchange);
                 String username = requestBody.optString("username", "");
                 String message = requestBody.optString("message", "");
 
-                JSONObject responseJson = new JSONObject();
+                JSONObject response = new JSONObject();
 
                 if (activeSessions.containsKey(username)) {
                     chatRoom.addMessage(username, message);
-                    responseJson.put("status", "success");
-                    responseJson.put("message", "Message sent!");
+                    response.put("status", "success");
+                    response.put("message", "Meddelande skickat");
                 } else {
-                    responseJson.put("status", "failure");
-                    responseJson.put("message", "User not logged in.");
+                    response.put("status", "failure");
+                    response.put("message", "Ej inloggad");
                 }
 
-                System.out.println("Message sent: " + responseJson);
-                sendJsonResponse(exchange, responseJson);
+                sendJsonResponse(exchange, response);
             } else {
-                exchange.sendResponseHeaders(405, -1); // Method not allowed
+                exchange.sendResponseHeaders(405, -1);
             }
         }
     }
 
+    // Hanterare för att hämta meddelanden
     static class ReceiveMessagesHandler implements HttpHandler {
         @Override
         public void handle(HttpExchange exchange) throws IOException {
@@ -182,27 +197,19 @@ public class Main {
                 handleCors(exchange);
                 return;
             }
+
             if ("GET".equals(exchange.getRequestMethod())) {
-                JSONObject responseJson = new JSONObject();
-                responseJson.put("messages", chatRoom.getMessages());
-                System.out.println("Messages received: " + responseJson);
-                sendJsonResponse(exchange, responseJson);
+                JSONObject response = new JSONObject();
+                response.put("messages", chatRoom.getMessages());
+                sendJsonResponse(exchange, response);
             } else {
-                exchange.sendResponseHeaders(405, -1); // Method not allowed
+                exchange.sendResponseHeaders(405, -1);
             }
         }
     }
 
-    private static class UserSession {
-        private final String username;
-
-        public UserSession(String username) {
-            this.username = username;
-        }
-
-        public String getUsername() {
-            return username;
-        }
+    // Hjälpklasser
+        private record UserSession(String username) {
     }
 
     private static class ChatRoom {
@@ -241,11 +248,12 @@ public class Main {
         }
     }
 
+    // Hjälpmetoder för HTTP-hantering
     private static void handleCors(HttpExchange exchange) throws IOException {
         exchange.getResponseHeaders().add("Access-Control-Allow-Origin", "*");
         exchange.getResponseHeaders().add("Access-Control-Allow-Methods", "GET, POST, OPTIONS");
         exchange.getResponseHeaders().add("Access-Control-Allow-Headers", "Content-Type");
-        exchange.sendResponseHeaders(204, -1); // No content for OPTIONS request
+        exchange.sendResponseHeaders(204, -1);
     }
 
     private static JSONObject parseRequestBody(HttpExchange exchange) throws IOException {
